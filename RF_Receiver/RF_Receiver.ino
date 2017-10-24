@@ -31,14 +31,15 @@
 */
 //#define CMP_MEMDBG 1
 
-#define CMP_CC1101
+#define CMP_CC1101     // bitte auch das "#define CMP_CC1101" in der SignalDecoder.h beachten 
 
-#define PROGNAME               "RF_RECEIVER"
 #define PROGVERS               "3.3.1-dev"
+#define PROGNAME               "RF_RECEIVER"
 #define VERSION_1               0x33
 #define VERSION_2               0x1d
 
 #ifdef CMP_CC1101
+
 	#ifdef ARDUINO_AVR_ICT_BOARDS_ICT_BOARDS_AVR_RADINOCC1101
 		#define PIN_LED               13
 		#define PIN_SEND              9   // gdo0Pin TX out
@@ -49,8 +50,11 @@
 		#define PIN_SEND              3   // gdo0Pin TX out
 	    #define PIN_RECEIVE           2
 	#endif
-
-  #endif
+#else
+	#define PIN_RECEIVE            2
+	#define PIN_LED                13 // Message-LED
+	#define PIN_SEND               11
+#endif
 
 #define BAUDRATE               57600
 #define FIFO_LENGTH			   50
@@ -709,25 +713,13 @@ uint8_t cmdstringPos2int(uint8_t pos) {
 inline void getConfig()
 {
    MSG_PRINT(F("MS="));
-   //enDisPrint(musterDec.MSenabled);
    MSG_PRINT(musterDec.MSenabled,DEC);
    MSG_PRINT(F(";MU="));
-   //enDisPrint(musterDec.MUenabled);
    MSG_PRINT(musterDec.MUenabled, DEC);
    MSG_PRINT(F(";MC="));
-   //enDisPrint(musterDec.MCenabled);
-   MSG_PRINTLN(musterDec.MCenabled, DEC);
-}
-
-
-inline void enDisPrint(bool enDis)
-{
-   if (enDis) {
-      MSG_PRINT(F("enable"));
-   }
-   else {
-      MSG_PRINT(F("disable"));
-   }
+   MSG_PRINT(musterDec.MCenabled, DEC);
+   MSG_PRINT(F(";Mred="));
+   MSG_PRINTLN(musterDec.MredEnabled, DEC);
 }
 
 
@@ -736,13 +728,16 @@ inline void configCMD()
   bool *bptr;
 
   if (cmdstring.charAt(2) == 'S') {  	  //MS
-	bptr=&musterDec.MSenabled;;
+	bptr=&musterDec.MSenabled;
   }
   else if (cmdstring.charAt(2) == 'U') {  //MU
-	bptr=&musterDec.MUenabled;;
+	bptr=&musterDec.MUenabled;
   }
   else if (cmdstring.charAt(2) == 'C') {  //MC
-	bptr=&musterDec.MCenabled;;
+	bptr=&musterDec.MCenabled;
+  }
+  else if (cmdstring.charAt(2) == 'R') {  //Mreduce
+	  bptr = &musterDec.MredEnabled;
   }
 
   if (cmdstring.charAt(1) == 'E') {   // Enable
@@ -753,7 +748,7 @@ inline void configCMD()
   } else {
 	return;
   }
-  storeFunctions(musterDec.MSenabled, musterDec.MUenabled, musterDec.MCenabled);
+  storeFunctions(musterDec.MSenabled, musterDec.MUenabled, musterDec.MCenabled, musterDec.MredEnabled);
 }
 
 inline void configSET()
@@ -893,21 +888,25 @@ inline void changeReceiver() {
 
 //================================= EEProm commands ======================================
 
-void storeFunctions(const int8_t ms, int8_t mu, int8_t mc)
+void storeFunctions(const int8_t ms, int8_t mu, int8_t mc, int8_t red)
 {
 	mu=mu<<1;
 	mc=mc<<2;
-	int8_t dat =  ms | mu | mc;
-    EEPROM.write(addr_features,dat);
+	red = red << 3;
+
+	int8_t dat = ms | mu | mc | red;
+	EEPROM.write(addr_features,dat);
 }
 
-void getFunctions(bool *ms,bool *mu,bool *mc)
+void getFunctions(bool *ms,bool *mu,bool *mc, bool *red)
 {
     int8_t dat = EEPROM.read(addr_features);
 
     *ms=bool (dat &(1<<0));
     *mu=bool (dat &(1<<1));
     *mc=bool (dat &(1<<2));
+	*red = bool(dat &(1 << 3));
+
 
 }
 
@@ -916,16 +915,16 @@ void initEEPROM(void) {
   if (EEPROM.read(EE_MAGIC_OFFSET) == VERSION_1 && EEPROM.read(EE_MAGIC_OFFSET+1) == VERSION_2) {
     DBG_PRINTLN("Reading values fom eeprom");
   } else {
-    storeFunctions(1, 1, 1);    // Init EEPROM with all flags enabled
+    storeFunctions(1, 1, 1,1);    // Init EEPROM with all flags enabled
     //hier fehlt evtl ein getFunctions()
-    DBG_PRINTLN("Init eeprom to defaults after flash");
+    MSG_PRINTLN(F("Init eeprom to defaults after flash"));
     EEPROM.write(EE_MAGIC_OFFSET, VERSION_1);
     EEPROM.write(EE_MAGIC_OFFSET+1, VERSION_2);
-    // if (hasCC1101) {                // der ccFactoryReset muss auch durchgefuehrt werden, wenn der cc1101 nicht erkannt wurde
+    #ifdef CMP_CC1101
        cc1101::ccFactoryReset();
-    //}
+    #endif
   }
-  getFunctions(&musterDec.MSenabled, &musterDec.MUenabled, &musterDec.MCenabled);
+  getFunctions(&musterDec.MSenabled, &musterDec.MUenabled, &musterDec.MCenabled,&musterDec.MredEnabled);
 
 }
 

@@ -36,6 +36,8 @@
 #else
 	#include "WProgram.h"
 #endif
+
+#define CMP_CC1101
 #define DEBUG 1
 
 #include "output.h"
@@ -103,7 +105,7 @@ public:
 	uint16_t tol;                           // calculated tolerance for signal
 	//uint8_t bitcnt;
 	status state;                           // holds the status of the detector
-	int buffer[1];                          // Internal buffer to store two pules length
+	int buffer[2];                          // Internal buffer to store two pules length
 	int* first;                             // Pointer to first buffer entry
 	int* last;                              // Pointer to last buffer entry
 	float tolFact;                          //
@@ -116,9 +118,9 @@ public:
 	bool mcDetected;						// MC Signal alread detected flag
 	uint8_t mcMinBitLen;					// min bit Length
 	uint8_t rssiValue;						// Holds the RSSI value retrieved via a rssi callback
-	FuncRetuint8t _rssiCallback;			// Holds the pointer to a callback Function
+	FuncRetuint8t _rssiCallback=NULL;			// Holds the pointer to a callback Function
 
-	void addData(const uint8_t value);
+	void addData(const int8_t value);
 	void addPattern();
 	inline void updPattern(const uint8_t ppos);
 
@@ -136,7 +138,8 @@ public:
 
 	int8_t findpatt(const int val);              // Finds a pattern in our pattern store. returns -1 if te pattern is not found
 	//bool validSequence(const int *a, const int *b);     // checks if two pulses are basically valid in terms of on-off signals
-	
+	bool checkMBuffer();
+
 
 };
 
