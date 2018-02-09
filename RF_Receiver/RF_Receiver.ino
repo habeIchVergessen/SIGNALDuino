@@ -29,23 +29,49 @@
 *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 */
+
+
+// Config flags for compiling correct options / boards Define only one
+#define ARDUINO_ATMEGA328P_MINICUL 1
+//#define ARDUINO_AVR_ICT_BOARDS_ICT_BOARDS_AVR_RADINOCC1101 1;
+//#define OTHER_BOARD_WITH_CC1101  1
+
 //#define CMP_MEMDBG 1
 
-#define CMP_CC1101     // bitte auch das "#define CMP_CC1101" in der SignalDecoder.h beachten 
+// #todo: header file für die Boards anlegen
+#ifdef OTHER_BOARD_WITH_CC1101
+	#define CMP_CC1101     
+#endif
+#ifdef ARDUINO_ATMEGA328P_MINICUL
+	#define CMP_CC1101     
+#endif
+#ifdef ARDUINO_AVR_ICT_BOARDS_ICT_BOARDS_AVR_RADINOCC1101
+	#define CMP_CC1101     
+#endif
 
-#define PROGVERS               "3.3.1-dev"
+
+
+#define PROGVERS               "3.3.1-RC3"
 #define PROGNAME               "RF_RECEIVER"
 #define VERSION_1               0x33
 #define VERSION_2               0x1d
 
-#ifdef CMP_CC1101
 
+
+#ifdef CMP_CC1101
 	#ifdef ARDUINO_AVR_ICT_BOARDS_ICT_BOARDS_AVR_RADINOCC1101
 		#define PIN_LED               13
 		#define PIN_SEND              9   // gdo0Pin TX out
 		#define PIN_RECEIVE				   7
 		#define digitalPinToInterrupt(p) ((p) == 0 ? 2 : ((p) == 1 ? 3 : ((p) == 2 ? 1 : ((p) == 3 ? 0 : ((p) == 7 ? 4 : NOT_AN_INTERRUPT)))))
-    #else 
+		#define PIN_MARK433			  4
+		#define SS					  8  
+	#elif ARDUINO_ATMEGA328P_MINICUL  // 8Mhz 
+		#define PIN_LED               4
+		#define PIN_SEND              2   // gdo0Pin TX out
+		#define PIN_RECEIVE           3
+		#define PIN_MARK433			  analogInputToDigitalPin(0)
+	#else 
 		#define PIN_LED               9
 		#define PIN_SEND              3   // gdo0Pin TX out
 	    #define PIN_RECEIVE           2
@@ -56,9 +82,9 @@
 	#define PIN_SEND               11
 #endif
 
-#define BAUDRATE               57600
-#define FIFO_LENGTH			   50
-#define DEBUG				   1
+#define BAUDRATE               57600 // 500000 //57600
+#define FIFO_LENGTH			   50 //150
+//#define DEBUG				   1
 
 
 #include <avr/wdt.h>
@@ -153,6 +179,7 @@ void changeReceiver();
 uint8_t cmdstringPos2int(uint8_t pos);
 void printHex2(const byte hex);
 uint8_t rssiCallback() { return 0; };	// Dummy return if no rssi value can be retrieved from receiver
+size_t writeCallback(const uint8_t *buf, uint8_t len = 1);
 
 
 void setup() {
@@ -217,6 +244,8 @@ void setup() {
 	MSG_PRINT("MU:"); 	MSG_PRINTLN(musterDec.MUenabled);
 	MSG_PRINT("MC:"); 	MSG_PRINTLN(musterDec.MCenabled);*/
 	cmdstring.reserve(40);
+
+	musterDec.setStreamCallback(&writeCallback);
 
 	if (!hasCC1101 || cc1101::regCheck()) {
 		enableReceive();
@@ -305,8 +334,7 @@ void handleInterrupt() {
 }
 
 void enableReceive() {
-   attachInterrupt(digitalPinToInterrupt(PIN_RECEIVE), handleInterrupt, CHANGE);
-
+	attachInterrupt(digitalPinToInterrupt(PIN_RECEIVE), handleInterrupt, CHANGE);
    #ifdef CMP_CC1101
    if (hasCC1101) cc1101::setReceiveMode();
    #endif
@@ -314,13 +342,28 @@ void enableReceive() {
 
 void disableReceive() {
   detachInterrupt(digitalPinToInterrupt(PIN_RECEIVE));
- 
+
   #ifdef CMP_CC1101
   if (hasCC1101) cc1101::setIdleMode();
   #endif
+  FiFo.flush();
+
 }
 
+//============================== Write callback =========================================
+size_t writeCallback(const uint8_t *buf, uint8_t len = 1)
+{
+	while (!MSG_PRINTER.availableForWrite() )
+		yield();
+	//DBG_PRINTLN("Called writeCallback");
 
+	//MSG_PRINT(*buf);
+	//MSG_WRITE(buf, len);
+	MSG_PRINTER.write(buf,len);
+	
+	//serverClient.write("test");
+
+}
 
 //================================= RAW Send ======================================
 void send_raw(const uint8_t startpos,const uint16_t endpos,const int16_t *buckets, String *source=&cmdstring)
@@ -331,9 +374,9 @@ void send_raw(const uint8_t startpos,const uint16_t endpos,const int16_t *bucket
 	uint16_t dur;
 	for (uint16_t i=startpos;i<=endpos;i++ )
 	{
-		//MSG_PRINT(cmdstring.substring(i,i+1));
+		//DBG_PRINT(cmdstring.substring(i,i+1));
 		index = source->charAt(i) - '0';
-		//MSG_PRINT(index);
+		//DBG_PRINT(index);
 		isLow=buckets[index] >> 15;
 		dur = abs(buckets[index]); 		//isLow ? dur = abs(buckets[index]) : dur = abs(buckets[index]);
 
@@ -346,7 +389,7 @@ void send_raw(const uint8_t startpos,const uint16_t endpos,const int16_t *bucket
 	while (stoptime > micros()){
 		;
 	}
-	//MSG_PRINTLN("");
+	//DBG_PRINTLN("");
 
 }
 //SM;R=2;C=400;D=AFAFAF;
@@ -405,12 +448,12 @@ bool split_cmdpart(int16_t *startpos, String *msg_part)
 // SR;R=10;P0=-2000;P1=-1000;P2=500;P3=-6000;D=2020202021212020202121212021202021202121212023;
 
 struct s_sendcmd {
-	int16_t sendclock;
+	int16_t sendclock=0;
 	uint8_t type;
-	uint8_t datastart;
-	uint16_t dataend;
+	uint8_t datastart=0;
+	uint16_t dataend=0;
 	int16_t buckets[6];
-	uint8_t repeats;
+	uint8_t repeats=1;
 } ;
 
 void send_cmd()
@@ -442,7 +485,7 @@ void send_cmd()
 
 	while (split_cmdpart(&start_pos,&msg_part))
 	{
-		//MSG_PRINTLN(msg_part);
+		DBG_PRINTLN(msg_part);
 		if (msg_part.charAt(0) == 'S')
 		{
 			if (msg_part.charAt(1) == 'C')  // send combined informatio flag
@@ -450,6 +493,7 @@ void send_cmd()
 				//type=combined;
 				//cmdNo=255;
 				cmdNo++;
+				//command[cmdNo].repeats = 0;
 				command[cmdNo].type = combined;
 				extraDelay = false;
 			}
@@ -457,17 +501,19 @@ void send_cmd()
 			{
 				//type=manchester;
 				cmdNo++;
+				//command[cmdNo].repeats = 0;
 				command[cmdNo].type=manchester;
-				//MSG_PRINTLN("Adding manchester");
+				DBG_PRINTLN("Adding manchester");
+
 			}
 			else if (msg_part.charAt(1) == 'R') // send raw
 			{
 				//type=raw;
 				cmdNo++;
+				//command[cmdNo].repeats = 0;
 				command[cmdNo].type=raw;
-				//MSG_PRINTLN("Adding raw");
+				DBG_PRINTLN("Adding raw");
 				extraDelay = false;
-
 			}
 		}
 		else if (msg_part.charAt(0) == 'P' && msg_part.charAt(2) == '=') // Do some basic detection if data matches what we expect
@@ -475,19 +521,20 @@ void send_cmd()
 			counter = msg_part.substring(1,2).toInt(); // extract the pattern number
 			//buckets[counter]=  msg_part.substring(3).toInt();
 			command[cmdNo].buckets[counter]=msg_part.substring(3).toInt();
-		    //MSG_PRINTLN("Adding bucket");
+			DBG_PRINTLN("Adding bucket");
 
 		} else if(msg_part.charAt(0) == 'R' && msg_part.charAt(1) == '=') {
 			command[cmdNo].repeats = msg_part.substring(2).toInt();
-		    //MSG_PRINTLN("Adding repeats");
+			DBG_PRINT("Adding repeats: "); DBG_PRINTLN(command[cmdNo].repeats);
+
 
 		} else if (msg_part.charAt(0) == 'D') {
 			command[cmdNo].datastart = start_pos - msg_part.length()+1;
 			command[cmdNo].dataend = start_pos-2;
-		    //MSG_PRINT("locating data start:");
-		   // MSG_PRINT(command[cmdNo].datastart);
-		    //MSG_PRINT(" end:");
-			//MSG_PRINTLN(command[cmdNo].dataend);
+			DBG_PRINT("locating data start:");
+			DBG_PRINT(command[cmdNo].datastart);
+			DBG_PRINT(" end:");
+			DBG_PRINTLN(command[cmdNo].dataend);
 			//if (type==raw) send_raw(&msg_part,buckets);
 			//if (type==manchester) send_mc(&msg_part,sendclock);
 			//digitalWrite(PIN_SEND, LOW); // turn off transmitter
@@ -496,14 +543,14 @@ void send_cmd()
 		{
 			//sendclock = msg_part.substring(2).toInt();
 			command[cmdNo].sendclock = msg_part.substring(2).toInt();
-		    //MSG_PRINTLN("adding sendclock");
+			DBG_PRINTLN("adding sendclock");
 		} else if(msg_part.charAt(0) == 'F' && msg_part.charAt(1) == '=')
 		{
 			ccParamAnz = msg_part.length() / 2 - 1;
 			
 			if (ccParamAnz > 0 && ccParamAnz <= 5 && hasCC1101) {
 				uint8_t hex;
-				MSG_PRINT("write new ccreg  ");
+				DBG_PRINTLN("write new ccreg  ");
 				for (uint8_t i=0;i<ccParamAnz;i++)
 				{
 					ccReg[i] = cc1101::readReg(0x0d + i, 0x80);    // alte Registerwerte merken
@@ -514,7 +561,7 @@ void send_cmd()
 					cc1101::writeReg(0x0d + i, val);            // neue Registerwerte schreiben
 					printHex2(val);
 				}
-				MSG_PRINTLN("");
+				DBG_PRINTLN("");
 			}
 		}
 	}
@@ -523,34 +570,44 @@ void send_cmd()
 	if (hasCC1101) cc1101::setTransmitMode();	
 	#endif
 
-	
-	if (command[0].type == combined && command[0].repeats > 0) repeats = command[0].repeats;
 
-	for (uint8_t i=0;i<repeats;i++)
+	if (command[0].type == combined && command[0].repeats > 0) {
+		repeats = command[0].repeats;
+	}
+	for (uint8_t i = 0;i < repeats; i++)
 	{
-		for (uint8_t c=0;c<=cmdNo;c++)
+		DBG_PRINT("repeat "); DBG_PRINT(i); DBG_PRINT("/"); DBG_PRINT(repeats);
+		
+		for (uint8_t c = 0;c <= cmdNo ;c++)
 		{
+			DBG_PRINT(" cmd "); DBG_PRINT(c); DBG_PRINT("/"); DBG_PRINT(cmdNo);
+			DBG_PRINT(" reps "); DBG_PRINT(command[c].repeats);
+
 			if (command[c].type == raw) { for (uint8_t rep = 0; rep < command[c].repeats; rep++) send_raw(command[c].datastart, command[c].dataend, command[c].buckets); }
-			if (command[c].type == manchester) { for (uint8_t rep = 0; rep < command[c].repeats; rep++)send_mc(command[c].datastart, command[c].dataend, command[c].sendclock); }
+			else if (command[c].type == manchester) { for (uint8_t rep = 0; rep < command[c].repeats; rep++)send_mc(command[c].datastart, command[c].dataend, command[c].sendclock); }
 			digitalLow(PIN_SEND);
+			DBG_PRINT(".");
+
 		}
+		DBG_PRINTLN(" ");
+
 		if (extraDelay) delay(1);
 	}
 
 	if (ccParamAnz > 0) {
-		MSG_PRINT("ccreg write back ");
+		DBG_PRINT("ccreg write back ");
 		for (uint8_t i=0;i<ccParamAnz;i++)
 		{
 			val = ccReg[i];
 			printHex2(val);
 			cc1101::writeReg(0x0d + i, val);    // gemerkte Registerwerte zurueckschreiben
 		}
-		MSG_PRINTLN("");
+		DBG_PRINTLN("");
 	}
 
+	MSG_PRINTLN(cmdstring); // echo
+	musterDec.reset();
 	enableReceive();	// enable the receiver
-    MSG_PRINTLN(cmdstring); // echo
-
 }
 
 
@@ -607,7 +664,7 @@ void HandleCommand()
 	  MSG_PRINT("V " PROGVERS " SIGNALduino ");
 	  if (hasCC1101) {
 		MSG_PRINT(F("cc1101 "));
-	    #ifdef ARDUINO_AVR_ICT_BOARDS_ICT_BOARDS_AVR_RADINOCC1101
+	    #ifdef PIN_MARK433
 	    MSG_PRINT("(");
 	    MSG_PRINT(isLow(PIN_MARK433) ? "433" : "868");
 	    MSG_PRINT(F("Mhz )"));
