@@ -1,7 +1,7 @@
 /*
 *   Pattern Decoder Library V3
 *   Library to decode radio signals based on patternd detection
-*   2014-2015  N.Butzek, S.Butzek
+*   2014-2015  N.Butzek, S.Butzek---
 *   2015-2017  S.Butzek
 
 *   This library contains classes to perform decoding of digital signals
@@ -153,9 +153,6 @@ inline void SignalDetectorClass::doDetect()
 
 			reset();
 			valid = true;
-		}
-		if (messageLen < minMessageLen) {
-			MsMoveCount = 3;
 		}
 		
 		if (messageLen == maxMsgSize )
@@ -339,11 +336,13 @@ void SignalDetectorClass::processMessage()
 		DBG_PRINTLN("Message received:");
 #endif
 
-		compress_pattern();
-		//calcHisto();
-		getClock();
-		if (state == clockfound && MSenabled) getSync();
-
+		if (!mcDetected)
+		{
+			compress_pattern();
+			//calcHisto();
+			getClock();
+			if (state == clockfound && MSenabled) getSync();
+		}
 #if DEBUGDETECT >= 1
 		printOut();
 #endif
@@ -642,17 +641,22 @@ void SignalDetectorClass::processMessage()
 						mcDetected = false;
 						success = true;
 					}
-
-				}
-				else if (mcDetected == true && m_truncated == true) {
-					//SDC_PRINT(" mc true");
-
-					success = true;   // Prevents MU Processing
+					else if (mcDetected == true) {
+						if (m_truncated == true) {
+							//SDC_PRINT(" mc true");
+							success = true;   // Prevents MU Processing
+						} else {
+							// message buffer is untouched till now, but we will reset the the message buffer now to preserve anything else
+							message.reset();
+							messageLen = 0;
+							m_truncated = true; // Preserve anything else like pattern and so on.
+						}
+					}
 				}
 
 			}
 		}
-		if (MUenabled && state == clockfound && success == false && messageLen >= minMessageLen) {
+		if (MUenabled && !mcDetected && state == clockfound && success == false && messageLen >= minMessageLen) {
 				//SDC_PRINT(" try mu");
 
 #if DEBUGDECODE > 1
@@ -821,6 +825,7 @@ void SignalDetectorClass::reset()
 	mend = 0;
 	//DBG_PRINT(":sdres:");
 	//last = NULL;
+	MsMoveCount = 3;
 }
 
 const status SignalDetectorClass::getState()
@@ -1322,7 +1327,7 @@ const bool ManchesterpatternDecoder::doDecode() {
 	DBG_PRINTLN("");
 
 #endif
-	uint8_t bit = 0;
+	static uint8_t bit = 0;
 
 	//bool prelongdecoding = false; // Flag that we are in a decoding bevore the 1. long pulse
 	#ifdef DEBUGDECODE
@@ -1348,7 +1353,7 @@ const bool ManchesterpatternDecoder::doDecode() {
 				DBG_PRINT(ManchesterBits.getValue(ManchesterBits.valcount - 1));
 #endif
 
-				if (isShort(pdec->message[i - 1]) && i>3)
+				if (isShort(pdec->message[i - 1]) && --i>1)
 				{
 					while (i > 1)
 					{
@@ -1372,6 +1377,8 @@ const bool ManchesterpatternDecoder::doDecode() {
 
 					}
 				}
+				else if (i > 0 && pdec->pattern[pdec->message[i - 1]] < pdec->pattern[longlow])i++; // increment i, so that it is resettet to mstart two lines later
+				
 				if (i == pdec->mstart) i++; // 1. long shoud not be processed twice if there was nothing valid before that pulse
 				else i = pdec->mstart; // recover i to mstart
 			}
@@ -1387,7 +1394,6 @@ const bool ManchesterpatternDecoder::doDecode() {
 			*/
 		}
 		
-		const uint8_t mpi = pdec->message[i]; // Store pattern for further processing
 		/*
 		if (mc_start_found == false && mc_sync && (isShort(mpi) || isLong(mpi)))
 		{
@@ -1398,6 +1404,8 @@ const bool ManchesterpatternDecoder::doDecode() {
 		// Decoding occures here
 		if (mc_sync && mc_start_found)
 		{
+			const uint8_t mpi = pdec->message[i]; // Store pattern for further processing
+
 			if (isShort(mpi) && (i + 1 < pdec->messageLen && isShort(pdec->message[i + 1])))
 			{
 				i++;
@@ -1415,7 +1423,7 @@ const bool ManchesterpatternDecoder::doDecode() {
 #ifdef DEBUGDECODE
 				DBG_PRINT("H(");
 				DBG_PRINT("vcnt:");
-				DBG_PRINT(ManchesterBits.valcount);
+				DBG_PRINT(ManchesterBits.valcount-1);
 #endif
 
 				if (ManchesterBits.valcount < minbitlen)
@@ -1448,8 +1456,17 @@ const bool ManchesterpatternDecoder::doDecode() {
 					if (i == maxMsgSize-1 && i == pdec->messageLen-1 && isShort(mpi))
 					{
 						pdec->mcDetected = true;
+						pdec->state = mcdecoding; // Try to prevent other processing
+
 					}
-		
+					else if (pdec->pattern[mpi] < pdec->pattern[longlow] && i < pdec->messageLen - 1 && (isLong(pdec->message[i + 1]) || isShort(pdec->message[i + 1]))
+						|| (i<pdec->messageLen - 2 && isShort(mpi) && pdec->pattern[pdec->message[i + 1]] < pdec->pattern[longlow] && (isLong(pdec->message[i + 2]) || isShort(pdec->message[i + 3])) && i++)
+						)
+					{
+						i++;  // This will remove a gap between two transmissions of a message preventing the gap to be interpreded as part of the message itself
+						pdec->state = mcdecoding; // Try to prevent other processing
+					}
+
 					pdec->bufferMove(i);   // Todo: BufferMove könnte in die Serielle Ausgabe verschoben werden, das würde ein paar Mikrosekunden Zeit sparen
 #ifdef DEBUGDECODE
 					DBG_PRINT(":mpos=");
@@ -1506,33 +1523,29 @@ const bool ManchesterpatternDecoder::doDecode() {
 	DBG_PRINT(":bfin:");
 #endif
 
-
-	// Check if last entry in our message array belongs to our manchester signal
-	if (i == maxMsgSize && i == pdec->messageLen  && pdec->mstart > 0 && ManchesterBits.valcount > minbitlen / 2)
+	if (i == maxMsgSize && ManchesterBits.valcount > minbitlen / 2)
 	{
+		// We are at end of buffer but have half or more of the minbitlen, we need to catch some more data
 #ifdef DEBUGDECODE
-		DBG_PRINT(":bmove:");
+		DBG_PRINT(":mcDet:");
 #endif
+		pdec->state = mcdecoding;
+		pdec->mcDetected = true; // This will reset the message buffer in the processMessage method and preserve it till then
+		return false;		     // Prevents serial output of data we already have in the buffer
 
-		pdec->bufferMove(pdec->mstart);
-		//pdec->m_truncated = true;  // Flag that we truncated the message array and want to receiver some more data
-		
-		pdec->mcDetected = true;
-		return false;
 	}
-	// Buffer is full with mc signal, so we clear the buffer and caputre additional signaldata
-	else if (i == maxMsgSize && i == pdec->messageLen && pdec->mstart == 0)
+	else if (i == maxMsgSize)
 	{
-		pdec->mcDetected = true;
-		pdec->messageLen = 0;
-		pdec->message.reset();
-		//pdec->m_truncated = true;  // Flag that we truncated the message array and want to receiver some more data
+		// We are at end of buffer, but we haven't much mcdata 
+		pdec->mcDetected = false;
+		pdec->m_truncated = false;
 #ifdef DEBUGDECODE
-		DBG_PRINT(":bflush:");
-
+		DBG_PRINT(":MCnomsg:");
 #endif
-		return false;
+		// Return false will allow mu processing
 	}
+
+
 
 	return (ManchesterBits.valcount >= minbitlen);  // Min 20 Bits needed, then return true, otherwise false
 
