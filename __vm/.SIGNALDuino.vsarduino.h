@@ -14,6 +14,7 @@
 #define _VSARDUINO_H_
 #define __AVR_ATmega328p__
 #define __AVR_ATmega328P__
+#define _VMDEBUG 1
 #define F_CPU 16000000L
 #define ARDUINO 10805
 #define ARDUINO_AVR_NANO
@@ -69,6 +70,7 @@ typedef void *__builtin_va_list;
 #undef PSTR
 #define PSTR(string_literal) ((const PROGMEM char *)(string_literal))
 
+typedef unsigned char uint8_t;
 
 #define pgm_read_byte(address_short) uint8_t() 
 #define pgm_read_word(address_short) uint16_t() 

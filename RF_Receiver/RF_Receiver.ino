@@ -45,13 +45,21 @@
 #ifdef ARDUINO_ATMEGA328P_MINICUL
 	#define CMP_CC1101     
 #endif
+
+// Get compatibility with arduino ide and visualmicro
 #ifdef ARDUINO_AVR_ICT_BOARDS_ICT_BOARDS_AVR_RADINOCC1101
+#define ARDUINO_RADINOCC1101
+#endif
+
+#ifdef ARDUINO_RADINOCC1101
 	#define CMP_CC1101     
 #endif
 
 
 
-#define PROGVERS               "3.3.1-RCR"
+
+
+#define PROGVERS               "3.3.1-RC4"
 #define PROGNAME               "RF_RECEIVER"
 #define VERSION_1               0x33
 #define VERSION_2               0x1d
@@ -59,7 +67,7 @@
 
 
 #ifdef CMP_CC1101
-	#ifdef ARDUINO_AVR_ICT_BOARDS_ICT_BOARDS_AVR_RADINOCC1101
+	#ifdef ARDUINO_RADINOCC1101
 		#define PIN_LED               13
 		#define PIN_SEND              9   // gdo0Pin TX out
 		#define PIN_RECEIVE				   7
@@ -92,7 +100,7 @@
 #include "output.h"
 #include "bitstore.h"
 #include "signalDecoder.h"
-#include <TimerOne.h>  // Timer for LED Blinking
+#include "TimerOne.h"  // Timer for LED Blinking
 
 #include "SimpleFIFO.h"
 SimpleFIFO<int,FIFO_LENGTH> FiFo; //store FIFO_LENGTH # ints
@@ -664,10 +672,10 @@ void HandleCommand()
 	    #ifdef PIN_MARK433
 	    MSG_PRINT("(");
 	    MSG_PRINT(isLow(PIN_MARK433) ? "433" : "868");
-	    MSG_PRINT(F("Mhz )"));
+	    MSG_PRINT(F("Mhz)"));
 	    #endif
       }
-	MSG_PRINTLN("- compiled at " __DATE__ " " __TIME__)
+	MSG_PRINTLN(" - compiled at " __DATE__ " " __TIME__)
 
   }
   // R: FreeMemory
