@@ -1750,7 +1750,7 @@ const bool ManchesterpatternDecoder::isManchester()
 #if DEBUGDETECT >= 1
 						DBG_PRINT(z); DBG_PRINT("=")DBG_PRINT(mpz); DBG_PRINT(";")
 
-							DBG_PRINT("Long"); DBG_PRINT(isLong(mpz)); DBG_PRINT(";");
+						DBG_PRINT("Long"); DBG_PRINT(isLong(mpz)); DBG_PRINT(";");
 						DBG_PRINT("Short"); DBG_PRINT(isShort(mpz)); DBG_PRINTLN(";");
 
 #endif
@@ -1797,8 +1797,8 @@ const bool ManchesterpatternDecoder::isManchester()
 							}
 							if (break_flag == false) {
 								break_flag = true; // Must be set false during loops
-								uint8_t seq_a = (longhigh * 10) + longlow;
-								uint8_t seq_b = (longlow * 10) + longhigh;
+								uint8_t seq_a = (shorthigh * 10) + longlow;
+								uint8_t seq_b = (longhigh * 10) + shortlow;
 								if (seq_a < 10) seq_a += 100;
 								if (seq_b < 10) seq_b += 100;
 
@@ -1889,6 +1889,11 @@ const bool ManchesterpatternDecoder::isManchester()
 						else {
 							mc_start_found = false;
 							mc_sync = false;
+							for (uint8_t a = 0; a < 4; a++)
+							{
+								sequence_even[a] = sequence_odd[a] = -1;
+							}
+
 						}
 					}
 					else {
@@ -1896,6 +1901,7 @@ const bool ManchesterpatternDecoder::isManchester()
 						{
 							pdec->mstart = z;
 							mc_start_found = true;
+
 						}
 
 
