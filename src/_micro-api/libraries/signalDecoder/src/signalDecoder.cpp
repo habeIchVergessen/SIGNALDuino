@@ -136,6 +136,8 @@ inline void SignalDetectorClass::updPattern( const uint8_t ppos)
 inline void SignalDetectorClass::doDetect()
 {
 
+
+
 	//printOut();
 
 	bool valid;
@@ -237,12 +239,14 @@ inline void SignalDetectorClass::doDetect()
 		DBG_PRINT(", vcnt:");	DBG_PRINT(message.valcount);
 		DBG_PRINTLN(" ");
 #endif
-
+	
 
 }
 
 bool SignalDetectorClass::decode(const int * pulse)
 {
+	//unsigned long t = micros();
+
 	success = false;
 	if (messageLen > 0)
 		last = &pattern[message[messageLen - 1]];
@@ -252,13 +256,17 @@ bool SignalDetectorClass::decode(const int * pulse)
 	*first = *pulse;
 	
 	doDetect();
+
+
 	return success;
 }
 
 
 void SignalDetectorClass::compress_pattern()
 {
+
 	calcHisto();
+
 	for (uint8_t idx = 0; idx<patternLen-1; idx++)
 	{
 		if (histo[idx] == 0)
@@ -276,16 +284,18 @@ void SignalDetectorClass::compress_pattern()
 
 			if (inTol(pattern[idx2], pattern[idx], tol))  // Pattern are very equal, so we can combine them
 			{
-				uint8_t change_count = 0;
+				//unsigned long t = micros();
 				// Change val -> ref_val in message array
-				for (uint8_t i = 0; i<messageLen && change_count < histo[idx2]; i++)
+				uint8_t p = 0;
+				for (uint8_t i = 0; i<messageLen && p<histo[idx2]; i++)
 				{
-					if (message[i] == idx2)
+
+					if (message.getValue(i) == idx2 && message.changeValue(i, idx))
 					{
-						message.changeValue(i, idx);
-						change_count++;
+						p++;
 					}
 				}
+			//	d = micros() - t;
 
 #if DEBUGDETECT>2
 				DBG_PRINT("compr: "); DBG_PRINT(idx2); DBG_PRINT("->"); DBG_PRINT(idx); DBG_PRINT(";");
@@ -310,7 +320,7 @@ void SignalDetectorClass::compress_pattern()
 			}
 		}
 	}
-	/*
+
 	if (!checkMBuffer())
 	{
 		SDC_PRINTLN("after compress_pattern ->");
@@ -325,14 +335,16 @@ void SignalDetectorClass::compress_pattern()
 		SDC_PRINTLN(" wrong Data in Buffer");
 		printOut();
 	}
-	*/
+
 }
 
 void SignalDetectorClass::processMessage()
 {
+
 	yield();
 	char buf[22] = {};
 	uint8_t n = 0;
+
 
 	if (mcDetected == true || messageLen >= minMessageLen) {
 		success = false;
@@ -342,16 +354,11 @@ void SignalDetectorClass::processMessage()
 		DBG_PRINTLN("Message received:");
 #endif
 
-		if (!mcDetected)
-		{
-			compress_pattern();
-			//calcHisto();
-			getClock();
-			if (state == clockfound && MSenabled) getSync();
-		}
-		else {
-			calcHisto();
-		}
+		compress_pattern();
+
+		//calcHisto();
+		getClock();
+		if (state == clockfound) getSync();
 
 #if DEBUGDETECT >= 1
 		printOut();
@@ -809,8 +816,7 @@ void SignalDetectorClass::processMessage()
 	{
 		reset();
 	}
-
-	//SDC_PRINTLN("process finished");
+	//MSG_PRINTLN("process finished");
 }
 
 
